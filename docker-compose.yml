@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  uv-monitor:
+    image: alexdiazdecerio/uv-alert-vitoria:latest
+    container_name: uv-alert-vitoria
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - UV_THRESHOLD=${UV_THRESHOLD:-6}
+      - SKIN_TYPE=${SKIN_TYPE:-2}
+      - CHECK_INTERVAL_MINUTES=${CHECK_INTERVAL_MINUTES:-30}
+      - TZ=Europe/Madrid
+    volumes:
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
