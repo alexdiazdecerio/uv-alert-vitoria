@@ -54,6 +54,24 @@ docker-compose up -d
 - 🐳 [Documentación de Docker Hub](https://hub.docker.com/r/alexdiazdecerio/uv-alert-vitoria)
 - 🔧 [Configuración avanzada](#configuración)
 
+## 🧴 Comandos de Telegram
+
+### Tracking de Protector Solar
+- **`/crema`** o **`/protector`** - Reporta que te has aplicado protector solar (SPF 50 por defecto)
+- **`/crema 30`** - Reporta aplicación con SPF específico (ej: SPF 30)
+- **`/status`** - Muestra estado actual de UV y protección solar
+
+### Ejemplo de uso:
+```
+/crema 50          # Aplicado SPF 50
+/status            # Ver cuánto tiempo queda de protección
+```
+
+El sistema calculará automáticamente:
+- ⏰ Tiempo de protección según tu tipo de piel, SPF y UV actual
+- 🔔 Recordatorio 15 minutos antes de que expire
+- 📊 Ajuste por medicación fotosensibilizante
+
 ## 🎯 Características
 ## Instalación
 

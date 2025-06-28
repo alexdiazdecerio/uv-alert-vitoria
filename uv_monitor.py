@@ -10,12 +10,15 @@ import json
 import schedule
 import time
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, Tuple
 import asyncio
-from telegram import Bot
+from telegram import Bot, Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.error import TelegramError
 import pytz
+import json
+from pathlib import Path
 from openweather_api import CurrentUVIndexAPI
 
 # Configuración de logging
@@ -51,9 +54,14 @@ class UVMonitor:
         
         # Bot de Telegram
         self.bot = Bot(token=self.telegram_token)
+        self.application = None
         
         # Timezone
-        self.tz = pytz.timezone('Europe/Madrid')    
+        self.tz = pytz.timezone('Europe/Madrid')
+        
+        # Sistema de tracking de protector solar
+        self.sunscreen_file = '/app/logs/sunscreen_tracking.json'
+        self.sunscreen_data = self.load_sunscreen_data()    
     def get_uv_data(self) -> Optional[float]:
         """Obtiene índice UV actual de CurrentUVIndex en tiempo real"""
         try:
@@ -137,6 +145,10 @@ class UVMonitor:
                 await self.send_safe_alert()
                 self.is_dangerous = False
             
+            # Verificar recordatorios de protector solar
+            if self.check_sunscreen_expiry():
+                await self.send_sunscreen_reminder()
+            
             # Log del estado actual
             level_desc, emoji = self.get_uv_level_description(self.current_uv_index)
             logger.info(f"UV actual: {self.current_uv_index} - {level_desc} {emoji}")
@@ -200,7 +212,231 @@ class UVMonitor:
 🕐 Hora: {now.strftime('%H:%M')}
 📅 Fecha: {now.strftime('%d/%m/%Y')}"""
         
-        await self.send_telegram_message(message)    
+        await self.send_telegram_message(message)
+    
+    def load_sunscreen_data(self) -> dict:
+        """Carga datos de aplicación de protector solar"""
+        try:
+            if Path(self.sunscreen_file).exists():
+                with open(self.sunscreen_file, 'r') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            logger.error(f"Error cargando datos de protector solar: {e}")
+            return {}
+    
+    def save_sunscreen_data(self):
+        """Guarda datos de aplicación de protector solar"""
+        try:
+            Path(self.sunscreen_file).parent.mkdir(parents=True, exist_ok=True)
+            with open(self.sunscreen_file, 'w') as f:
+                json.dump(self.sunscreen_data, f, indent=2)
+        except Exception as e:
+            logger.error(f"Error guardando datos de protector solar: {e}")
+    
+    def calculate_sunscreen_protection_time(self, spf: int, uv_index: float) -> int:
+        """Calcula duración de protección del protector solar en minutos"""
+        # Tiempo base de protección natural según tipo de piel (en minutos)
+        base_times = {
+            1: 67,   # Tipo I - Muy clara
+            2: 100,  # Tipo II - Clara  
+            3: 200,  # Tipo III - Media
+            4: 300,  # Tipo IV - Morena
+            5: 400,  # Tipo V - Muy morena
+            6: 500   # Tipo VI - Negra
+        }
+        
+        base_protection = base_times.get(self.skin_type, 100)
+        
+        # Ajuste por medicación fotosensibilizante (50% menos tiempo)
+        base_protection *= 0.5
+        
+        # Calcular tiempo de protección: base_time * SPF / UV_index
+        if uv_index > 0:
+            protection_time = int((base_protection * spf) / uv_index)
+            # Límites prácticos: mínimo 30 min, máximo 4 horas
+            return min(max(protection_time, 30), 240)
+        
+        return 120  # 2 horas por defecto si UV es 0
+    
+    async def handle_sunscreen_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Maneja comando /crema para reportar aplicación de protector"""
+        try:
+            # Parsear SPF del comando (por defecto SPF 50)
+            spf = 50
+            if context.args:
+                try:
+                    spf = int(context.args[0])
+                    if spf < 15 or spf > 100:
+                        spf = 50
+                except ValueError:
+                    spf = 50
+            
+            now = datetime.now(self.tz)
+            current_uv = self.current_uv_index or 0
+            
+            # Calcular tiempo de protección
+            protection_time = self.calculate_sunscreen_protection_time(spf, current_uv)
+            expiry_time = now + timedelta(minutes=protection_time)
+            
+            # Guardar datos
+            self.sunscreen_data = {
+                'applied_at': now.isoformat(),
+                'spf': spf,
+                'uv_at_application': current_uv,
+                'expires_at': expiry_time.isoformat(),
+                'protection_minutes': protection_time
+            }
+            self.save_sunscreen_data()
+            
+            # Respuesta al usuario
+            level_desc, emoji = self.get_uv_level_description(current_uv)
+            
+            message = f"""🧴 <b>Protector Solar Aplicado</b> ✅
+
+☀️ <b>SPF {spf}</b> registrado correctamente
+
+📊 <b>Condiciones actuales:</b>
+• UV Index: {current_uv} ({level_desc} {emoji})
+• Tipo de piel: {self.skin_type}
+
+⏰ <b>Protección válida hasta:</b>
+{expiry_time.strftime('%H:%M')} ({protection_time} minutos)
+
+🔔 Te recordaré cuando necesites reaplicar la crema.
+
+💡 <b>Consejo:</b> Reaplicar cada 2 horas o después de sudar/mojarse."""
+            
+            await update.message.reply_text(message, parse_mode='HTML')
+            logger.info(f"Protector solar SPF {spf} aplicado a las {now.strftime('%H:%M')}")
+            
+        except Exception as e:
+            logger.error(f"Error en comando /crema: {e}")
+            await update.message.reply_text("❌ Error procesando comando. Intenta de nuevo.")
+    
+    async def handle_status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Maneja comando /status para ver estado de protección"""
+        try:
+            now = datetime.now(self.tz)
+            level_desc, emoji = self.get_uv_level_description(self.current_uv_index)
+            
+            message = f"""📊 <b>Estado UV - Vitoria-Gasteiz</b>
+
+🌞 <b>UV Actual:</b> {self.current_uv_index} ({level_desc} {emoji})
+🕐 <b>Hora:</b> {now.strftime('%H:%M')}
+
+"""
+            
+            if self.sunscreen_data:
+                applied_time = datetime.fromisoformat(self.sunscreen_data['applied_at'])
+                expiry_time = datetime.fromisoformat(self.sunscreen_data['expires_at'])
+                
+                if now < expiry_time:
+                    time_left = expiry_time - now
+                    hours, remainder = divmod(int(time_left.total_seconds()), 3600)
+                    minutes, _ = divmod(remainder, 60)
+                    
+                    message += f"""🧴 <b>Protector Activo:</b>
+• SPF: {self.sunscreen_data['spf']}
+• Aplicado: {applied_time.strftime('%H:%M')}
+• Tiempo restante: {hours}h {minutes}m
+• Expira: {expiry_time.strftime('%H:%M')}
+
+✅ <b>Estás protegido</b>"""
+                else:
+                    time_expired = now - expiry_time
+                    hours_expired = int(time_expired.total_seconds() / 3600)
+                    
+                    message += f"""⚠️ <b>Protección Expirada</b>
+• Expiró hace: {hours_expired}h
+• Última aplicación: {applied_time.strftime('%H:%M')}
+
+🧴 <b>¡Necesitas reaplicar protector solar!</b>"""
+            else:
+                message += f"""❌ <b>Sin protección registrada</b>
+
+🧴 Usa /crema para reportar aplicación de protector solar"""
+            
+            await update.message.reply_text(message, parse_mode='HTML')
+            
+        except Exception as e:
+            logger.error(f"Error en comando /status: {e}")
+            await update.message.reply_text("❌ Error obteniendo estado.")
+    
+    def check_sunscreen_expiry(self) -> bool:
+        """Verifica si necesita recordatorio de reaplicación"""
+        if not self.sunscreen_data:
+            return False
+            
+        try:
+            now = datetime.now(self.tz)
+            expiry_time = datetime.fromisoformat(self.sunscreen_data['expires_at'])
+            
+            # Recordatorio 15 minutos antes de expirar
+            reminder_time = expiry_time - timedelta(minutes=15)
+            
+            # Si estamos en ventana de recordatorio y no se ha enviado
+            if (reminder_time <= now <= expiry_time and 
+                not self.sunscreen_data.get('reminder_sent', False)):
+                return True
+                
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error verificando expiración de protector: {e}")
+            return False
+    
+    async def send_sunscreen_reminder(self):
+        """Envía recordatorio de reaplicación de protector solar"""
+        try:
+            now = datetime.now(self.tz)
+            expiry_time = datetime.fromisoformat(self.sunscreen_data['expires_at'])
+            spf = self.sunscreen_data['spf']
+            level_desc, emoji = self.get_uv_level_description(self.current_uv_index)
+            
+            message = f"""⏰ <b>Recordatorio de Protector Solar</b> 🧴
+
+⚠️ Tu protección SPF {spf} expira en 15 minutos
+
+🌞 <b>UV Actual:</b> {self.current_uv_index} ({level_desc} {emoji})
+🕐 <b>Expira a las:</b> {expiry_time.strftime('%H:%M')}
+
+🧴 <b>Recomendación:</b>
+• Reaplicar protector solar SPF 50+
+• Asegurar cobertura uniforme
+• No olvidar orejas, cuello y manos
+
+💡 Usa /crema después de reaplicar para reiniciar el timer."""
+            
+            await self.send_telegram_message(message)
+            
+            # Marcar recordatorio como enviado
+            self.sunscreen_data['reminder_sent'] = True
+            self.save_sunscreen_data()
+            
+            logger.info("Recordatorio de protector solar enviado")
+            
+        except Exception as e:
+            logger.error(f"Error enviando recordatorio de protector: {e}")    
+    async def setup_telegram_bot(self):
+        """Configura el bot de Telegram con comandos"""
+        try:
+            self.application = Application.builder().token(self.telegram_token).build()
+            
+            # Registrar comandos
+            self.application.add_handler(CommandHandler("crema", self.handle_sunscreen_command))
+            self.application.add_handler(CommandHandler("protector", self.handle_sunscreen_command))
+            self.application.add_handler(CommandHandler("status", self.handle_status_command))
+            
+            # Inicializar aplicación
+            await self.application.initialize()
+            await self.application.start()
+            
+            logger.info("Bot de Telegram configurado con comandos: /crema, /protector, /status")
+            
+        except Exception as e:
+            logger.error(f"Error configurando bot de Telegram: {e}")
+    
     def run(self):
         """Ejecuta el monitor"""
         logger.info("Iniciando UV Monitor para Vitoria-Gasteiz")
@@ -208,11 +444,19 @@ class UVMonitor:
         logger.info(f"Tipo de piel: {self.skin_type}")
         logger.info(f"Intervalo de chequeo: {self.check_interval} minutos")
         
+        # Configurar bot de Telegram
+        asyncio.run(self.setup_telegram_bot())
+        
         # Primera verificación
         asyncio.run(self.check_uv_and_alert())
         
         # Programar verificaciones periódicas
         schedule.every(self.check_interval).minutes.do(
+            lambda: asyncio.run(self.check_uv_and_alert())
+        )
+        
+        # Verificar recordatorios cada 5 minutos
+        schedule.every(5).minutes.do(
             lambda: asyncio.run(self.check_uv_and_alert())
         )
         

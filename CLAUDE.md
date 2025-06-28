@@ -20,8 +20,10 @@ UV Alert Vitoria-Gasteiz is a UV radiation monitoring system that sends Telegram
 - Fallback UV estimation based on time of day and season when API is unavailable
 - Telegram bot integration for real-time alerts
 - Bidirectional alerts: dangerous UV levels AND when UV drops to safe levels
+- Smart sunscreen tracking with automatic reminders
 - Skin type-based safe exposure time calculations
 - 50% exposure time reduction for photosensitizing medication
+- Interactive Telegram commands for protection management
 - Docker containerization with health monitoring
 
 ## Development Commands
@@ -96,6 +98,13 @@ python3 test_telegram.py
 - Different message templates for dangerous vs safe conditions
 - Includes calculated safe exposure times in alerts
 - Alerts when UV rises above threshold AND when it drops below threshold
+
+### Sunscreen Tracking System
+- Interactive Telegram commands: /crema, /protector, /status
+- Automatic protection time calculation based on SPF, skin type, and current UV
+- Smart reminders 15 minutes before protection expires
+- Persistent storage of sunscreen application data
+- Integration with UV monitoring for comprehensive protection
 
 ### Error Handling
 - Comprehensive logging to both console and file
