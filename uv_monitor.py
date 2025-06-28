@@ -16,7 +16,7 @@ import asyncio
 from telegram import Bot
 from telegram.error import TelegramError
 import pytz
-from euskalmet_api import EuskalmetAPI
+from openweather_api import OpenWeatherMapAPI
 
 # Configuración de logging
 logging.basicConfig(
@@ -41,8 +41,8 @@ class UVMonitor:
         self.skin_type = int(os.getenv('SKIN_TYPE', '2'))
         self.check_interval = int(os.getenv('CHECK_INTERVAL_MINUTES', '30'))
         
-        # API de Euskalmet
-        self.euskalmet = EuskalmetAPI()
+        # API de OpenWeatherMap
+        self.openweather = OpenWeatherMapAPI()
         
         # Estado actual
         self.current_uv_index = 0
@@ -55,9 +55,9 @@ class UVMonitor:
         # Timezone
         self.tz = pytz.timezone('Europe/Madrid')    
     def get_uv_data(self) -> Optional[float]:
-        """Obtiene índice UV actual de la API de Euskalmet"""
+        """Obtiene índice UV actual de OpenWeatherMap"""
         try:
-            uv_index = self.euskalmet.get_current_uv()
+            uv_index = self.openweather.get_current_uv()
             
             if uv_index is not None:
                 logger.info(f"Índice UV obtenido: {uv_index}")
@@ -132,6 +132,10 @@ class UVMonitor:
             if is_dangerous_now != self.is_dangerous:
                 await self.send_alert(is_dangerous_now)
                 self.is_dangerous = is_dangerous_now
+            # También enviar alerta si UV baja por debajo del umbral
+            elif self.is_dangerous and self.current_uv_index < self.uv_threshold:
+                await self.send_safe_alert()
+                self.is_dangerous = False
             
             # Log del estado actual
             level_desc, emoji = self.get_uv_level_description(self.current_uv_index)
@@ -174,6 +178,24 @@ class UVMonitor:
 🌤️ El nivel de radiación UV ha bajado a niveles seguros.
 
 💡 Puedes salir con precauciones normales.
+
+🕐 Hora: {now.strftime('%H:%M')}
+📅 Fecha: {now.strftime('%d/%m/%Y')}"""
+        
+        await self.send_telegram_message(message)
+    
+    async def send_safe_alert(self):
+        """Envía alerta cuando UV baja del umbral peligroso"""
+        now = datetime.now(self.tz)
+        level_desc, emoji = self.get_uv_level_description(self.current_uv_index)
+        
+        message = f"""✅ <b>UV SEGURO - Vitoria-Gasteiz</b> ✅
+
+{emoji} Índice UV: <b>{self.current_uv_index}</b> ({level_desc})
+
+🌤️ El nivel de radiación UV ha bajado por debajo del umbral peligroso ({self.uv_threshold}).
+
+💡 Ahora puedes salir con las precauciones normales para tu tipo de piel.
 
 🕐 Hora: {now.strftime('%H:%M')}
 📅 Fecha: {now.strftime('%d/%m/%Y')}"""

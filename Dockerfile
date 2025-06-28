@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar código de la aplicación
 COPY uv_monitor.py .
-COPY euskalmet_api.py .
+COPY openweather_api.py .
 
 # Crear directorio para logs
 RUN mkdir -p /app/logs
