@@ -11,6 +11,7 @@ ENV TZ=Europe/Madrid
 ENV UV_THRESHOLD=6
 ENV SKIN_TYPE=2
 ENV CHECK_INTERVAL_MINUTES=30
+ENV EUSKALMET_API_EMAIL=your-email@example.com
 
 # Crear directorio de trabajo
 WORKDIR /app
@@ -29,6 +30,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar código de la aplicación
 COPY uv_monitor.py .
+COPY euskalmet_api.py .
 
 # Crear directorio para logs
 RUN mkdir -p /app/logs

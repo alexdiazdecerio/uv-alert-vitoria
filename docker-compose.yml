@@ -12,6 +12,9 @@ services:
       - SKIN_TYPE=${SKIN_TYPE:-2}
       - CHECK_INTERVAL_MINUTES=${CHECK_INTERVAL_MINUTES:-30}
       - TZ=Europe/Madrid
+      - EUSKALMET_API_KEY_PRIVATE=${EUSKALMET_API_KEY_PRIVATE}
+      - EUSKALMET_API_KEY_PUBLIC=${EUSKALMET_API_KEY_PUBLIC}
+      - EUSKALMET_API_EMAIL=${EUSKALMET_API_EMAIL}
     volumes:
       - ./logs:/app/logs
     logging:

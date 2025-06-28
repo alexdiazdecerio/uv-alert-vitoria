@@ -1,0 +1,65 @@
+{
+  "version": "2",
+  "templates": [
+    {
+      "type": 1,
+      "title": "UV Alert Vitoria-Gasteiz",
+      "description": "Monitor de radiación UV con alertas Telegram",
+      "categories": ["monitoring", "notifications"],
+      "platform": "linux",
+      "logo": "https://raw.githubusercontent.com/alexdiazdecerio/uv-alert-vitoria/main/logo.png",
+      "image": "alexdiazdecerio/uv-alert-vitoria:latest",
+      "restart_policy": "unless-stopped",
+      "env": [
+        {
+          "name": "TELEGRAM_BOT_TOKEN",
+          "label": "Token del Bot de Telegram",
+          "description": "Token obtenido de @BotFather"
+        },
+        {
+          "name": "TELEGRAM_CHAT_ID", 
+          "label": "ID de Chat de Telegram",
+          "description": "Tu ID de usuario de Telegram"
+        },
+        {
+          "name": "UV_THRESHOLD",
+          "label": "Umbral UV Peligroso",
+          "default": "6",
+          "description": "Índice UV considerado peligroso (6-11)"
+        },
+        {
+          "name": "SKIN_TYPE",
+          "label": "Tipo de Piel",
+          "default": "3",
+          "description": "Tu tipo de piel (1-6)",
+          "select": [
+            { "text": "Tipo I - Muy clara", "value": "1" },
+            { "text": "Tipo II - Clara", "value": "2" },
+            { "text": "Tipo III - Media", "value": "3" },
+            { "text": "Tipo IV - Morena", "value": "4" },
+            { "text": "Tipo V - Muy morena", "value": "5" },
+            { "text": "Tipo VI - Negra", "value": "6" }
+          ]
+        },
+        {
+          "name": "CHECK_INTERVAL_MINUTES",
+          "label": "Intervalo de Verificación (minutos)",
+          "default": "30",
+          "description": "Cada cuántos minutos verificar el UV"
+        },
+        {
+          "name": "TZ",
+          "label": "Zona Horaria",
+          "default": "Europe/Madrid",
+          "preset": true
+        }
+      ],
+      "volumes": [
+        {
+          "container": "/app/logs",
+          "bind": "/home/pi/uv-alert-logs"
+        }
+      ]
+    }
+  ]
+}
