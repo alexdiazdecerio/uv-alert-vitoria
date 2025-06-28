@@ -10,7 +10,6 @@ services:
       - SKIN_TYPE=${SKIN_TYPE:-2}
       - CHECK_INTERVAL_MINUTES=${CHECK_INTERVAL_MINUTES:-30}
       - TZ=Europe/Madrid
-      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
     volumes:
       - ./logs:/app/logs
     logging:

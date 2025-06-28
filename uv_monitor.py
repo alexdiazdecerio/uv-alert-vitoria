@@ -16,7 +16,7 @@ import asyncio
 from telegram import Bot
 from telegram.error import TelegramError
 import pytz
-from openweather_api import OpenWeatherMapAPI
+from openweather_api import CurrentUVIndexAPI
 
 # Configuración de logging
 logging.basicConfig(
@@ -41,8 +41,8 @@ class UVMonitor:
         self.skin_type = int(os.getenv('SKIN_TYPE', '2'))
         self.check_interval = int(os.getenv('CHECK_INTERVAL_MINUTES', '30'))
         
-        # API de OpenWeatherMap
-        self.openweather = OpenWeatherMapAPI()
+        # API de CurrentUVIndex (tiempo real)
+        self.uv_api = CurrentUVIndexAPI()
         
         # Estado actual
         self.current_uv_index = 0
@@ -55,9 +55,9 @@ class UVMonitor:
         # Timezone
         self.tz = pytz.timezone('Europe/Madrid')    
     def get_uv_data(self) -> Optional[float]:
-        """Obtiene índice UV actual de OpenWeatherMap"""
+        """Obtiene índice UV actual de CurrentUVIndex en tiempo real"""
         try:
-            uv_index = self.openweather.get_current_uv()
+            uv_index = self.uv_api.get_current_uv()
             
             if uv_index is not None:
                 logger.info(f"Índice UV obtenido: {uv_index}")

@@ -6,34 +6,26 @@ import os
 logger = logging.getLogger(__name__)
 
 
-class OpenWeatherMapAPI:
-    """Cliente para la API de OpenWeatherMap UV Index"""
+class CurrentUVIndexAPI:
+    """Cliente para la API de CurrentUVIndex.com - datos UV en tiempo real sin API key"""
     
     def __init__(self):
-        # API Key de OpenWeatherMap
-        self.api_key = os.getenv('OPENWEATHER_API_KEY', '')
-        
-        # Base URL para UV Index
-        self.base_url = "https://api.openweathermap.org/data/2.5/uvi"
+        # Base URL para CurrentUVIndex (sin API key necesaria)
+        self.base_url = "https://currentuvindex.com/api/v1/uvi"
         
         # Coordenadas de Vitoria-Gasteiz
         self.vitoria_lat = 42.8466
         self.vitoria_lon = -2.6725
         
-        if not self.api_key:
-            logger.warning("No se encontró OPENWEATHER_API_KEY, usando estimación por tiempo")
+        logger.info("Usando CurrentUVIndex API para datos UV en tiempo real")
     
     def get_current_uv(self):
-        """Obtiene el índice UV actual para Vitoria-Gasteiz"""
-        if not self.api_key:
-            logger.warning("API Key no configurada, usando estimación")
-            return self._estimate_uv_by_time()
-            
+        """Obtiene el índice UV actual para Vitoria-Gasteiz en tiempo real"""
         try:
+            # Obtener datos UV en tiempo real (sin API key)
             params = {
-                'lat': self.vitoria_lat,
-                'lon': self.vitoria_lon,
-                'appid': self.api_key
+                'latitude': self.vitoria_lat,
+                'longitude': self.vitoria_lon
             }
             
             response = requests.get(self.base_url, params=params, timeout=30)
@@ -41,20 +33,28 @@ class OpenWeatherMapAPI:
             
             data = response.json()
             
-            # La API devuelve el UV index directamente en el campo 'value'
-            if 'value' in data:
-                uv_value = data['value']
-                logger.info(f"UV obtenido de OpenWeatherMap: {uv_value}")
+            # Verificar respuesta exitosa
+            if not data.get('ok', False):
+                logger.warning("CurrentUVIndex API respuesta no válida, usando estimación")
+                return self._estimate_uv_by_time()
+            
+            # Obtener UV actual del campo 'now'
+            now_data = data.get('now', {})
+            if 'uvi' in now_data:
+                uv_value = now_data['uvi']
+                api_time = now_data.get('time', '')
+                
+                logger.info(f"UV obtenido de CurrentUVIndex (tiempo real): {uv_value} (fecha: {api_time})")
                 return float(uv_value)
             else:
-                logger.warning("Respuesta de OpenWeatherMap sin campo 'value'")
+                logger.warning("CurrentUVIndex API sin campo 'uvi', usando estimación")
                 return self._estimate_uv_by_time()
                 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error conectando con OpenWeatherMap: {e}")
+            logger.error(f"Error conectando con CurrentUVIndex API: {e}")
             return self._estimate_uv_by_time()
         except Exception as e:
-            logger.error(f"Error procesando respuesta de OpenWeatherMap: {e}")
+            logger.error(f"Error procesando respuesta de CurrentUVIndex: {e}")
             return self._estimate_uv_by_time()
     
     def _estimate_uv_by_time(self):
@@ -64,8 +64,19 @@ class OpenWeatherMapAPI:
         minute = now.minute
         month = now.month
         
-        # No hay UV antes de las 8 o después de las 20
-        if hour < 8 or hour > 20:
+        # Horarios de UV según estación (aproximados para Vitoria-Gasteiz)
+        if month in [6, 7, 8]:  # Verano - días más largos
+            uv_start_hour = 5
+            uv_end_hour = 21
+        elif month in [4, 5, 9, 10]:  # Primavera/Otoño  
+            uv_start_hour = 6
+            uv_end_hour = 19
+        else:  # Invierno - días más cortos
+            uv_start_hour = 7
+            uv_end_hour = 17
+            
+        # No hay UV fuera de las horas solares
+        if hour < uv_start_hour or hour > uv_end_hour:
             return 0.0
             
         # Factor estacional

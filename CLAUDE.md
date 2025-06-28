@@ -11,12 +11,12 @@ UV Alert Vitoria-Gasteiz is a UV radiation monitoring system that sends Telegram
 ### Core Components
 
 - **uv_monitor.py**: Main monitoring service that runs continuously, checking UV levels and sending alerts
-- **openweather_api.py**: API client for OpenWeatherMap UV Index service with fallback time-based estimation
+- **openweather_api.py**: API client for CurrentUVIndex.com real-time UV data (no API key required) with fallback time-based estimation
 - **test_telegram.py**: Configuration test script for Telegram bot setup
 
 ### Key Features
 
-- OpenWeatherMap UV Index API integration for real-time UV data
+- CurrentUVIndex.com API integration for real-time UV data (no API key, no delays)
 - Fallback UV estimation based on time of day and season when API is unavailable
 - Telegram bot integration for real-time alerts
 - Bidirectional alerts: dangerous UV levels AND when UV drops to safe levels
@@ -78,7 +78,6 @@ python3 test_telegram.py
 - `UV_THRESHOLD`: UV index threshold for alerts (default: 6)
 - `SKIN_TYPE`: Skin type 1-6 for exposure calculations (default: 2)
 - `CHECK_INTERVAL_MINUTES`: Minutes between checks (default: 30)
-- `OPENWEATHER_API_KEY`: OpenWeatherMap API key for real-time UV data
 
 ## Code Architecture Notes
 
@@ -88,9 +87,9 @@ python3 test_telegram.py
 - UV level descriptions and emojis are mapped in `get_uv_level_description()`
 
 ### API Integration
-- Primary: OpenWeatherMap UV Index API (free tier: 1000 calls/day)
+- Primary: CurrentUVIndex.com API (completely free, no API key required, real-time data)
 - Fallback: Time-based UV estimation when API fails or is unavailable
-- Simple REST API with API key authentication
+- Simple REST API with no authentication required
 
 ### Alert System
 - Bidirectional state-based alerting (dangerous ↔ safe transitions)
