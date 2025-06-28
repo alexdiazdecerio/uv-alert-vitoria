@@ -26,7 +26,9 @@ logging.basicConfig(
         logging.StreamHandler(),
         logging.FileHandler('/app/logs/uv_monitor.log')
     ]
-)logger = logging.getLogger(__name__)
+)
+
+logger = logging.getLogger(__name__)
 
 class UVMonitor:
     """Monitor de radiación UV para Vitoria-Gasteiz"""
