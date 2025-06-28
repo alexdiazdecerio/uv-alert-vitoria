@@ -165,7 +165,8 @@ class UVMonitor:
 • Busca la sombra
 
 🕐 Hora: {now.strftime('%H:%M')}
-📅 Fecha: {now.strftime('%d/%m/%Y')}"""        else:
+📅 Fecha: {now.strftime('%d/%m/%Y')}"""
+        else:
             message = f"""✅ <b>UV SEGURO - Vitoria-Gasteiz</b> ✅
 
 {emoji} Índice UV: <b>{self.current_uv_index}</b> ({level_desc})
