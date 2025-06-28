@@ -434,13 +434,26 @@ class UVMonitor:
         except Exception as e:
             logger.error(f"Error configurando bot de Telegram: {e}")
     
-    async def run_bot_polling(self):
-        """Ejecuta el polling del bot de Telegram"""
+    async def start_bot_polling(self):
+        """Inicia el polling del bot de Telegram"""
         try:
             if self.application:
-                await self.application.run_polling(drop_pending_updates=True)
+                await self.application.initialize()
+                await self.application.start()
+                await self.application.updater.start_polling(drop_pending_updates=True)
+                logger.info("Bot polling iniciado correctamente")
         except Exception as e:
-            logger.error(f"Error en bot polling: {e}")
+            logger.error(f"Error iniciando bot polling: {e}")
+    
+    async def stop_bot_polling(self):
+        """Detiene el polling del bot de Telegram"""
+        try:
+            if self.application and self.application.updater.running:
+                await self.application.updater.stop()
+                await self.application.stop()
+                await self.application.shutdown()
+        except Exception as e:
+            logger.error(f"Error deteniendo bot polling: {e}")
     
     async def uv_check_worker(self):
         """Worker para verificaciones UV periódicas"""
@@ -454,20 +467,26 @@ class UVMonitor:
     
     async def run_async(self):
         """Ejecuta el monitor de forma asíncrona"""
-        # Configurar bot de Telegram
-        await self.setup_telegram_bot()
-        
-        # Primera verificación
-        await self.check_uv_and_alert()
-        
-        # Crear tareas concurrentes
-        tasks = [
-            asyncio.create_task(self.uv_check_worker()),
-            asyncio.create_task(self.run_bot_polling())
-        ]
-        
-        # Ejecutar ambas tareas en paralelo
-        await asyncio.gather(*tasks)
+        try:
+            # Configurar bot de Telegram
+            await self.setup_telegram_bot()
+            
+            # Iniciar bot polling
+            await self.start_bot_polling()
+            
+            # Primera verificación
+            await self.check_uv_and_alert()
+            
+            # Ejecutar worker de verificación UV
+            await self.uv_check_worker()
+            
+        except KeyboardInterrupt:
+            logger.info("Deteniendo UV Monitor...")
+        except Exception as e:
+            logger.error(f"Error en run_async: {e}")
+        finally:
+            # Limpiar recursos
+            await self.stop_bot_polling()
     
     def run(self):
         """Ejecuta el monitor"""
