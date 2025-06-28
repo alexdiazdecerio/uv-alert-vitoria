@@ -10,6 +10,7 @@ import json
 import schedule
 import time
 import logging
+import threading
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, Tuple
 import asyncio
@@ -428,14 +429,45 @@ class UVMonitor:
             self.application.add_handler(CommandHandler("protector", self.handle_sunscreen_command))
             self.application.add_handler(CommandHandler("status", self.handle_status_command))
             
-            # Inicializar aplicación
-            await self.application.initialize()
-            await self.application.start()
-            
             logger.info("Bot de Telegram configurado con comandos: /crema, /protector, /status")
             
         except Exception as e:
             logger.error(f"Error configurando bot de Telegram: {e}")
+    
+    async def run_bot_polling(self):
+        """Ejecuta el polling del bot de Telegram"""
+        try:
+            if self.application:
+                await self.application.run_polling(drop_pending_updates=True)
+        except Exception as e:
+            logger.error(f"Error en bot polling: {e}")
+    
+    async def uv_check_worker(self):
+        """Worker para verificaciones UV periódicas"""
+        while True:
+            try:
+                await asyncio.sleep(self.check_interval * 60)  # Convertir minutos a segundos
+                await self.check_uv_and_alert()
+            except Exception as e:
+                logger.error(f"Error en verificación UV: {e}")
+                await asyncio.sleep(60)  # Esperar 1 minuto antes de reintentar
+    
+    async def run_async(self):
+        """Ejecuta el monitor de forma asíncrona"""
+        # Configurar bot de Telegram
+        await self.setup_telegram_bot()
+        
+        # Primera verificación
+        await self.check_uv_and_alert()
+        
+        # Crear tareas concurrentes
+        tasks = [
+            asyncio.create_task(self.uv_check_worker()),
+            asyncio.create_task(self.run_bot_polling())
+        ]
+        
+        # Ejecutar ambas tareas en paralelo
+        await asyncio.gather(*tasks)
     
     def run(self):
         """Ejecuta el monitor"""
@@ -444,26 +476,8 @@ class UVMonitor:
         logger.info(f"Tipo de piel: {self.skin_type}")
         logger.info(f"Intervalo de chequeo: {self.check_interval} minutos")
         
-        # Configurar bot de Telegram
-        asyncio.run(self.setup_telegram_bot())
-        
-        # Primera verificación
-        asyncio.run(self.check_uv_and_alert())
-        
-        # Programar verificaciones periódicas
-        schedule.every(self.check_interval).minutes.do(
-            lambda: asyncio.run(self.check_uv_and_alert())
-        )
-        
-        # Verificar recordatorios cada 5 minutos
-        schedule.every(5).minutes.do(
-            lambda: asyncio.run(self.check_uv_and_alert())
-        )
-        
-        # Mantener el programa ejecutándose
-        while True:
-            schedule.run_pending()
-            time.sleep(60)  # Verificar cada minuto
+        # Ejecutar de forma asíncrona
+        asyncio.run(self.run_async())
 
 
 def main():
