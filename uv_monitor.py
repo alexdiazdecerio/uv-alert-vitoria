@@ -62,7 +62,47 @@ class UVMonitor:
         
         # Sistema de tracking de protector solar
         self.sunscreen_file = '/app/logs/sunscreen_tracking.json'
-        self.sunscreen_data = self.load_sunscreen_data()    
+        self.sunscreen_data = self.load_sunscreen_data()
+        
+        # Horas de luz UV en Vitoria-Gasteiz (basado en solsticio de verano)
+        # 21 junio: amanecer 06:34, anochecer 21:53
+        # UV puede empezar ~1h después del amanecer y terminar ~1h antes del anochecer
+        self.uv_start_hour = 7  # 07:30 aproximadamente
+        self.uv_end_hour = 21   # 21:00 aproximadamente
+    
+    def is_uv_hours(self) -> bool:
+        """Verifica si estamos en horas donde puede haber UV significativo"""
+        now = datetime.now(self.tz)
+        current_hour = now.hour
+        return self.uv_start_hour <= current_hour <= self.uv_end_hour
+    
+    def should_check_uv(self) -> bool:
+        """Determina si debemos hacer chequeo UV ahora"""
+        if not self.is_uv_hours():
+            return False
+            
+        # Durante horas UV, verificar cada 30 minutos
+        return True
+    
+    def reset_daily_sunscreen_data(self):
+        """Resetea datos de protector solar al cambiar el día"""
+        if not self.sunscreen_data:
+            return
+            
+        try:
+            now = datetime.now(self.tz)
+            applied_time_str = self.sunscreen_data.get('applied_at')
+            
+            if applied_time_str:
+                applied_time = datetime.fromisoformat(applied_time_str)
+                # Si la aplicación fue en un día diferente, resetear
+                if applied_time.date() != now.date():
+                    logger.info("Reseteando datos de protector solar - nuevo día")
+                    self.sunscreen_data = {}
+                    self.save_sunscreen_data()
+                    
+        except Exception as e:
+            logger.error(f"Error reseteando datos de protector solar: {e}")    
     def get_uv_data(self) -> Optional[float]:
         """Obtiene índice UV actual de CurrentUVIndex en tiempo real"""
         try:
@@ -321,10 +361,18 @@ class UVMonitor:
             now = datetime.now(self.tz)
             level_desc, emoji = self.get_uv_level_description(self.current_uv_index)
             
+            # Información de horas UV
+            uv_hours_info = ""
+            if self.is_uv_hours():
+                uv_hours_info = f"☀️ <b>Horas UV activas</b> ({self.uv_start_hour}h-{self.uv_end_hour}h)"
+            else:
+                uv_hours_info = f"🌙 <b>Fuera de horas UV</b> ({self.uv_start_hour}h-{self.uv_end_hour}h)"
+            
             message = f"""📊 <b>Estado UV - Vitoria-Gasteiz</b>
 
 🌞 <b>UV Actual:</b> {self.current_uv_index} ({level_desc} {emoji})
 🕐 <b>Hora:</b> {now.strftime('%H:%M')}
+{uv_hours_info}
 
 """
             
@@ -456,11 +504,23 @@ class UVMonitor:
             logger.error(f"Error deteniendo bot polling: {e}")
     
     async def uv_check_worker(self):
-        """Worker para verificaciones UV periódicas"""
+        """Worker para verificaciones UV periódicas (solo durante horas de luz UV)"""
         while True:
             try:
-                await asyncio.sleep(self.check_interval * 60)  # Convertir minutos a segundos
-                await self.check_uv_and_alert()
+                # Resetear datos de protector solar al cambio de día
+                self.reset_daily_sunscreen_data()
+                
+                # Solo verificar UV durante horas de luz
+                if self.should_check_uv():
+                    await self.check_uv_and_alert()
+                    logger.info(f"Chequeo UV completado - Próximo en {self.check_interval} minutos")
+                    await asyncio.sleep(self.check_interval * 60)
+                else:
+                    # Fuera de horas UV, verificar cada hora si hemos entrado en horas UV
+                    now = datetime.now(self.tz)
+                    logger.info(f"Fuera de horas UV ({now.hour}h) - Próximo chequeo en 1 hora")
+                    await asyncio.sleep(3600)  # 1 hora
+                    
             except Exception as e:
                 logger.error(f"Error en verificación UV: {e}")
                 await asyncio.sleep(60)  # Esperar 1 minuto antes de reintentar
@@ -494,6 +554,13 @@ class UVMonitor:
         logger.info(f"Umbral UV: {self.uv_threshold}")
         logger.info(f"Tipo de piel: {self.skin_type}")
         logger.info(f"Intervalo de chequeo: {self.check_interval} minutos")
+        logger.info(f"Horas de monitoreo UV: {self.uv_start_hour}:00 - {self.uv_end_hour}:00")
+        
+        # Verificar si estamos en horas UV al iniciar
+        if self.is_uv_hours():
+            logger.info("✅ Sistema iniciado durante horas UV - Monitoreo activo")
+        else:
+            logger.info("🌙 Sistema iniciado fuera de horas UV - Esperando horas de luz")
         
         # Ejecutar de forma asíncrona
         asyncio.run(self.run_async())
