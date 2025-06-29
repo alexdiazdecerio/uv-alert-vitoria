@@ -138,7 +138,23 @@ class UVMonitor:
             safe_time = int(base_time / uv_index)
             return max(safe_time, 5)  # Mínimo 5 minutos
         
-        return 60  # Si UV es 0, tiempo seguro es alto    
+        return 60  # Si UV es 0, tiempo seguro es alto
+    
+    def calculate_burn_times(self, uv_index: float) -> tuple:
+        """Calcula tiempos de quemadura para piel normal y con medicación fotosensibilizante"""
+        if uv_index <= 0:
+            return (999, 999)  # Sin UV, no hay riesgo de quemadura
+            
+        # Tiempo base para piel tipo II (piel clara normal) - referencia estándar
+        normal_skin_base = 100  # minutos
+        
+        # Tiempo para piel normal (sin medicación)
+        normal_burn_time = int(normal_skin_base / uv_index)
+        
+        # Tiempo con medicación fotosensibilizante (50% del tiempo normal)
+        photosensitive_burn_time = int(normal_burn_time * 0.5)
+        
+        return (max(normal_burn_time, 5), max(photosensitive_burn_time, 3))    
     def get_uv_level_description(self, uv_index: float) -> Tuple[str, str]:
         """Obtiene descripción y emoji del nivel UV"""
         if uv_index < 3:
@@ -203,6 +219,7 @@ class UVMonitor:
         
         if is_dangerous:
             safe_time = self.calculate_safe_exposure_time(self.current_uv_index)
+            normal_burn, photosensitive_burn = self.calculate_burn_times(self.current_uv_index)
             
             message = f"""⚠️ <b>ALERTA UV - Vitoria-Gasteiz</b> ⚠️
 
@@ -212,7 +229,11 @@ class UVMonitor:
 
 ⏱️ <b>Tiempo máximo de exposición sin protección: {safe_time} minutos</b>
 
-⚠️ <b>ATENCIÓN:</b> Debido a tu medicación fotosensibilizante, este tiempo ya está reducido al 50%.
+🔥 <b>Tiempo hasta quemadura:</b>
+• Piel normal: {normal_burn} minutos
+• Con medicación fotosensibilizante: {photosensitive_burn} minutos
+
+⚠️ <b>ATENCIÓN:</b> Tu tiempo de protección ya está reducido al 50% por medicación.
 
 🧴 <b>Recomendaciones:</b>
 • Evita la exposición solar directa
@@ -332,6 +353,15 @@ class UVMonitor:
             
             # Respuesta al usuario
             level_desc, emoji = self.get_uv_level_description(current_uv)
+            normal_burn, photosensitive_burn = self.calculate_burn_times(current_uv)
+            
+            burn_info = ""
+            if current_uv > 0:
+                burn_info = f"""
+
+🔥 <b>Sin protección, quemadura en:</b>
+• Piel normal: {normal_burn} min
+• Con medicación fotosensibilizante: {photosensitive_burn} min"""
             
             message = f"""🧴 <b>Protector Solar Aplicado</b> ✅
 
@@ -339,7 +369,7 @@ class UVMonitor:
 
 📊 <b>Condiciones actuales:</b>
 • UV Index: {current_uv} ({level_desc} {emoji})
-• Tipo de piel: {self.skin_type}
+• Tipo de piel: {self.skin_type}{burn_info}
 
 ⏰ <b>Protección válida hasta:</b>
 {expiry_time.strftime('%H:%M')} ({protection_time} minutos)
@@ -368,11 +398,21 @@ class UVMonitor:
             else:
                 uv_hours_info = f"🌙 <b>Fuera de horas UV</b> ({self.uv_start_hour}h-{self.uv_end_hour}h)"
             
+            # Calcular tiempos de quemadura
+            normal_burn, photosensitive_burn = self.calculate_burn_times(self.current_uv_index)
+            
+            burn_info = ""
+            if self.current_uv_index > 0:
+                burn_info = f"""
+🔥 <b>Tiempo hasta quemadura:</b>
+• Piel normal: {normal_burn} min
+• Con medicación fotosensibilizante: {photosensitive_burn} min"""
+            
             message = f"""📊 <b>Estado UV - Vitoria-Gasteiz</b>
 
 🌞 <b>UV Actual:</b> {self.current_uv_index} ({level_desc} {emoji})
 🕐 <b>Hora:</b> {now.strftime('%H:%M')}
-{uv_hours_info}
+{uv_hours_info}{burn_info}
 
 """
             
