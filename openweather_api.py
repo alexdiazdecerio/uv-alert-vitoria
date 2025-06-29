@@ -66,7 +66,7 @@ class CurrentUVIndexAPI:
             uv_value = now_data['uvi']
             api_time = now_data.get('time', '')
             
-            # Verificar si los datos están desactualizados (más de 1.5 horas)
+            # Verificar si los datos están desactualizados (más de 75 minutos)
             if self._is_data_stale(api_time):
                 logger.warning(f"CurrentUVIndex datos desactualizados: {api_time}")
                 return None
@@ -123,7 +123,7 @@ class CurrentUVIndexAPI:
             return None
     
     def _is_data_stale(self, api_time_str):
-        """Verifica si los datos están desactualizados (más de 1.5 horas)"""
+        """Verifica si los datos están desactualizados (más de 75 minutos)"""
         try:
             from datetime import datetime, timezone, timedelta
             
@@ -131,9 +131,10 @@ class CurrentUVIndexAPI:
             api_time = datetime.fromisoformat(api_time_str.replace('Z', '+00:00'))
             current_time = datetime.now(timezone.utc)
             
-            # Verificar si han pasado más de 1.5 horas (90 minutos)
+            # Verificar si han pasado más de 75 minutos
+            # Las APIs UV deberían actualizarse cada hora máximo
             time_diff = current_time - api_time
-            return time_diff > timedelta(minutes=90)
+            return time_diff > timedelta(minutes=75)
             
         except Exception as e:
             logger.warning(f"Error verificando tiempo de datos: {e}")
