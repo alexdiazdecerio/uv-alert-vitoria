@@ -9,6 +9,7 @@ services:
       - UV_THRESHOLD=${UV_THRESHOLD:-6}
       - SKIN_TYPE=${SKIN_TYPE:-2}
       - CHECK_INTERVAL_MINUTES=${CHECK_INTERVAL_MINUTES:-30}
+      - OPENUV_API_KEY=${OPENUV_API_KEY}
       - TZ=Europe/Madrid
     volumes:
       - ./logs:/app/logs

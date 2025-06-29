@@ -7,55 +7,137 @@ logger = logging.getLogger(__name__)
 
 
 class CurrentUVIndexAPI:
-    """Cliente para la API de CurrentUVIndex.com - datos UV en tiempo real sin API key"""
+    """Cliente para la API de CurrentUVIndex.com con respaldo OpenUV - datos UV en tiempo real"""
     
     def __init__(self):
         # Base URL para CurrentUVIndex (sin API key necesaria)
         self.base_url = "https://currentuvindex.com/api/v1/uvi"
         
+        # OpenUV API como respaldo (requiere API key gratuita)
+        self.openuv_base_url = "https://api.openuv.io/api/v1/uv"
+        self.openuv_api_key = os.getenv('OPENUV_API_KEY')
+        
         # Coordenadas de Vitoria-Gasteiz
         self.vitoria_lat = 42.8466
         self.vitoria_lon = -2.6725
         
-        logger.info("Usando CurrentUVIndex API para datos UV en tiempo real")
+        logger.info("Usando CurrentUVIndex API (principal) y OpenUV API (respaldo) para datos UV")
     
     def get_current_uv(self):
         """Obtiene el índice UV actual para Vitoria-Gasteiz en tiempo real"""
+        # Intentar primero CurrentUVIndex
+        uv_value = self._try_currentuvindex()
+        if uv_value is not None:
+            return uv_value
+            
+        # Si falla, intentar OpenUV
+        uv_value = self._try_openuv()
+        if uv_value is not None:
+            return uv_value
+            
+        # Si ambas fallan, usar estimación
+        logger.warning("Todas las APIs UV fallaron, usando estimación por tiempo")
+        return self._estimate_uv_by_time()
+    
+    def _try_currentuvindex(self):
+        """Intenta obtener datos UV de CurrentUVIndex.com"""
         try:
-            # Obtener datos UV en tiempo real (sin API key)
             params = {
                 'latitude': self.vitoria_lat,
                 'longitude': self.vitoria_lon
             }
             
-            response = requests.get(self.base_url, params=params, timeout=30)
+            response = requests.get(self.base_url, params=params, timeout=15)
             response.raise_for_status()
             
             data = response.json()
             
             # Verificar respuesta exitosa
             if not data.get('ok', False):
-                logger.warning("CurrentUVIndex API respuesta no válida, usando estimación")
-                return self._estimate_uv_by_time()
+                logger.warning("CurrentUVIndex API respuesta no válida")
+                return None
             
             # Obtener UV actual del campo 'now'
             now_data = data.get('now', {})
-            if 'uvi' in now_data:
-                uv_value = now_data['uvi']
-                api_time = now_data.get('time', '')
+            if 'uvi' not in now_data:
+                logger.warning("CurrentUVIndex API sin campo 'uvi'")
+                return None
                 
-                logger.info(f"UV obtenido de CurrentUVIndex (tiempo real): {uv_value} (fecha: {api_time})")
-                return float(uv_value)
-            else:
-                logger.warning("CurrentUVIndex API sin campo 'uvi', usando estimación")
-                return self._estimate_uv_by_time()
+            uv_value = now_data['uvi']
+            api_time = now_data.get('time', '')
+            
+            # Verificar si los datos están desactualizados (más de 1.5 horas)
+            if self._is_data_stale(api_time):
+                logger.warning(f"CurrentUVIndex datos desactualizados: {api_time}")
+                return None
+                
+            logger.info(f"UV obtenido de CurrentUVIndex: {uv_value} (fecha: {api_time})")
+            return float(uv_value)
                 
         except requests.exceptions.RequestException as e:
             logger.error(f"Error conectando con CurrentUVIndex API: {e}")
-            return self._estimate_uv_by_time()
+            return None
         except Exception as e:
             logger.error(f"Error procesando respuesta de CurrentUVIndex: {e}")
-            return self._estimate_uv_by_time()
+            return None
+    
+    def _try_openuv(self):
+        """Intenta obtener datos UV de OpenUV API"""
+        if not self.openuv_api_key:
+            logger.warning("OpenUV API key no configurada")
+            return None
+            
+        try:
+            headers = {'x-access-token': self.openuv_api_key}
+            params = {
+                'lat': self.vitoria_lat,
+                'lng': self.vitoria_lon
+            }
+            
+            response = requests.get(self.openuv_base_url, headers=headers, params=params, timeout=15)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            # Verificar respuesta exitosa
+            if data.get('error'):
+                logger.error(f"OpenUV API error: {data.get('error')}")
+                return None
+                
+            result = data.get('result', {})
+            if 'uv' not in result:
+                logger.warning("OpenUV API sin campo 'uv'")
+                return None
+                
+            uv_value = result['uv']
+            api_time = result.get('uv_time', '')
+            
+            logger.info(f"UV obtenido de OpenUV: {uv_value} (fecha: {api_time})")
+            return float(uv_value)
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error conectando con OpenUV API: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error procesando respuesta de OpenUV: {e}")
+            return None
+    
+    def _is_data_stale(self, api_time_str):
+        """Verifica si los datos están desactualizados (más de 1.5 horas)"""
+        try:
+            from datetime import datetime, timezone, timedelta
+            
+            # Parsear tiempo de la API
+            api_time = datetime.fromisoformat(api_time_str.replace('Z', '+00:00'))
+            current_time = datetime.now(timezone.utc)
+            
+            # Verificar si han pasado más de 1.5 horas (90 minutos)
+            time_diff = current_time - api_time
+            return time_diff > timedelta(minutes=90)
+            
+        except Exception as e:
+            logger.warning(f"Error verificando tiempo de datos: {e}")
+            return False
     
     def _estimate_uv_by_time(self):
         """Estima el UV basándose en la hora del día y época del año"""
